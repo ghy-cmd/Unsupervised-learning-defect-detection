@@ -223,7 +223,7 @@ class PatchCore(torch.nn.Module):
         with tqdm.tqdm(dataloader, desc="Inferring...", leave=False) as data_iterator:
             for image in data_iterator:
                 if isinstance(image, dict):
-                    print(image["image_path"])
+                    # print(image["image_path"])
                     labels_gt.extend(image["is_anomaly"].numpy().tolist())  # [1,1]
                     masks_gt.extend(image["mask"].numpy().tolist())  # {list:2}{list:1}{list:224}{list:224}
                     image = image["image"]
@@ -238,7 +238,7 @@ class PatchCore(torch.nn.Module):
         """Infer score and mask for a batch of images."""
         # torch.Size([2, 3, 224, 224])
         images = images.to(torch.float).to(self.device)
-        print(images.size())
+        # print(images.size())
         _ = self.forward_modules.eval()
 
         batchsize = images.shape[0]  # 2

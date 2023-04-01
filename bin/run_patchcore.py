@@ -159,14 +159,14 @@ def dataset():
     return "get_dataloaders", get_dataloaders
 
 
+data = "mvtec"
+Mode = "resnet"  # swin1/resnet
+_LOG_GROUP = "resnet_layer2and3_test_if"  # swin1_layer2and3/resnet_layer2and3
 '''
 False:mvtec,optical
 true:altex,sdd
 '''
 CHANEL = False
-Backbone = ('wideresnet50')  # vit_swin_base/wideresnet50
-Layers = ('layer2', 'layer3')
-Mode = "resnet"  # swin1/resnet
 '''
 /home/guihaoyue_bishe/mvtec
 /home/guihaoyue_bishe/data/data_detection
@@ -181,7 +181,6 @@ SDD_Results
 Optical_Results
 '''
 _LOG_PROJECT = "Optical_Results"
-_LOG_GROUP = "resnet_layer2and3_10"  # swin1_layer2and3/resnet_layer2and3
 '''
 ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
                "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper", ]
@@ -190,6 +189,35 @@ _LOG_GROUP = "resnet_layer2and3_10"  # swin1_layer2and3/resnet_layer2and3
 ["optical_class"]
 '''
 _CLASSNAMES = ["optical_class"]
+if data == "mvtec":
+    CHANEL = False
+    _DATA_PATH = "/home/guihaoyue_bishe/mvtec"
+    _LOG_PROJECT = "MVTecAD_Results"
+    _CLASSNAMES = ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
+                   "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper", ]
+elif data == "optical":
+    CHANEL = False
+    _DATA_PATH = "/home/guihaoyue_bishe/data/data_detection/Optical"
+    _LOG_PROJECT = "Optical_Results"
+    _CLASSNAMES = ["optical_class"]
+elif data == "altex":
+    CHANEL = True
+    _DATA_PATH = "/home/guihaoyue_bishe/data/data_detection"
+    _LOG_PROJECT = "Aitex_results"
+    _CLASSNAMES = ["AITEX"]
+elif data == "sdd":
+    CHANEL = True
+    _DATA_PATH = "/home/guihaoyue_bishe/data/data_detection/SDD"
+    _LOG_PROJECT = "SDD_Results"
+    _CLASSNAMES = ["SDD"]
+
+Backbone = ('wideresnet50')  # vit_swin_base/wideresnet50
+if Mode == "resnet":
+    Backbone = ('wideresnet50')  # vit_swin_base/wideresnet50
+elif Mode == "swin1":
+    Backbone = ('vit_swin_base')
+Layers = ('layer2', 'layer3')
+
 _RISIZE = 256
 _TRAIN_VAL_SPLIT = 1.0
 _IMAGESIZE = 224

@@ -1,6 +1,7 @@
 import os
 import PIL.Image
 import torch
+import random
 
 from torch.utils.data import Dataset
 from enum import Enum
@@ -126,9 +127,16 @@ class MVTecDataset(Dataset):
                 # ['000.png',......]
                 anomaly_files = sorted(os.listdir(anomaly_path))
                 # {'bottle': {'good': ['/home/guihaoyue_bishe/mvtec/bottle/train/good/000.png',...]}}
-                imgpaths_per_class[classname][anomaly] = [
-                    os.path.join(anomaly_path, x) for x in anomaly_files
-                ]
+                if self.split == DatasetSplit.TRAIN and len(anomaly_files) > 5000:
+                    num_files_to_sample = 1000
+                    sampled_files = random.sample(anomaly_files, num_files_to_sample)
+                    imgpaths_per_class[classname][anomaly] = [
+                        os.path.join(anomaly_path, x) for x in sampled_files
+                    ]
+                else:
+                    imgpaths_per_class[classname][anomaly] = [
+                        os.path.join(anomaly_path, x) for x in anomaly_files
+                    ]
 
                 if self.train_val_split < 1.0:
                     n_images = len(imgpaths_per_class[classname][anomaly])  # 所有张数
