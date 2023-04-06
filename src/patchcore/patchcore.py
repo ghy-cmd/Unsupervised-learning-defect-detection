@@ -41,31 +41,34 @@ class PatchCore(torch.nn.Module):
         self.backbone = backbone.to(device)
         self.layers_to_extract_from = layers_to_extract_from
         self.input_shape = input_shape
+        self.mode = mode
 
         self.device = device
         self.patch_maker = PatchMaker(patchsize, stride=patchstride)
 
         self.forward_modules = torch.nn.ModuleDict({})
-
+        #######
         feature_aggregator = patchcore.common.NetworkFeatureAggregator(
             self.backbone, self.layers_to_extract_from, self.device, mode
         )
         feature_dimensions = feature_aggregator.feature_dimensions(input_shape)  # [512,1024]
         self.forward_modules["feature_aggregator"] = feature_aggregator
+        # if self.mode == 'swin3':
+        #     preprocessing = patchcore.common.Myprocess(feature_dimensions)
+        #     self.forward_modules["preprocessing"] = preprocessing
 
         preprocessing = patchcore.common.Preprocessing(
             feature_dimensions, pretrain_embed_dimension
         )
         self.forward_modules["preprocessing"] = preprocessing
-
+        #########
         self.target_embed_dimension = target_embed_dimension
         preadapt_aggregator = patchcore.common.Aggregator(
             target_dim=target_embed_dimension
         )
-
         _ = preadapt_aggregator.to(self.device)
-
         self.forward_modules["preadapt_aggregator"] = preadapt_aggregator
+
         self.anomaly_scorer = patchcore.common.NearestNeighbourScorer(
             n_nearest_neighbours=anomaly_score_num_nn, nn_method=nn_method
         )
@@ -75,7 +78,6 @@ class PatchCore(torch.nn.Module):
         )
 
         self.featuresampler = featuresampler
-        self.mode = mode
 
     def embed(self, data):
         if isinstance(data, torch.utils.data.DataLoader):
@@ -108,6 +110,7 @@ class PatchCore(torch.nn.Module):
         # print(type(features[0]))
         # torch.Size([2, 512, 28, 28]) torch.Size([2, 1024, 14, 14])
         # print(features[0].size(), features[1].size())
+        patch_shapes = []
         if self.mode == 'swin1':
             layer2 = 14
             layer3 = 7
@@ -116,60 +119,216 @@ class PatchCore(torch.nn.Module):
             # print(features[0].size(), features[1].size())
             features[0] = features[0].permute(0, -1, 1, 2)
             features[1] = features[1].permute(0, -1, 1, 2)
-        # print(features[0].size(), features[1].size())
-        features = [
-            self.patch_maker.patchify(x, return_spatial_info=True) for x in features
-        ]  # [(,[28,28])(,[14,14])]
-        # print("features", features[0][0].size())
-        patch_shapes = [x[1] for x in features]  # [[28, 28], [14, 14]]
-        # print("patch_shapes", patch_shapes)
-        features = [x[0] for x in features]
-        # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
-        # print("features", features[0].size(), features[1].size())
-        ref_num_patches = patch_shapes[0]  # [28,28]
-
-        for i in range(1, len(features)):
-            _features = features[i]  # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
-            patch_dims = patch_shapes[i]  # [28,28] [14,14]
-            # TODO(pgehler): Add comments
-            _features = _features.reshape(
-                _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:]
-            )  # torch.Size([2, 28 , 28, 512, 3, 3]) torch.Size([2, 14, 14, 1024, 3, 3])
-            _features = _features.permute(0, -3, -2, -1, 1, 2)
-            # torch.Size([2, 512 , 3, 3 , 28, 28])  torch.Size([2, 1024, 3, 3, 14, 14])
-            perm_base_shape = _features.shape
-            _features = _features.reshape(-1, *_features.shape[-2:])
-            # torch.Size([18432, 14, 14])
-            _features = F.interpolate(
-                _features.unsqueeze(1),  # [18432 , 1 , 14, 14]
-                size=(ref_num_patches[0], ref_num_patches[1]),
-                mode="bilinear",
-                align_corners=False,
-            )
-            # torch.Size([18432, 1, 28, 28])
-            _features = _features.squeeze(1)
-            # torch.Size([18432, 28, 28])
-            _features = _features.reshape(
-                *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
-            )
-            # torch.Size([2, 1024, 3, 3, 28, 28])
-            _features = _features.permute(0, -2, -1, 1, 2, 3)
-            # torch.Size([2, 28, 28, 1024, 3, 3])
-            _features = _features.reshape(len(_features), -1, *_features.shape[-3:])
-            # torch.Size([2, 784, 1024, 3, 3])
-            features[i] = _features
-        features = [x.reshape(-1, *x.shape[-3:]) for x in features]
-        # torch.Size([1568, 512, 3, 3]) torch.Size([1568, 1024, 3, 3])
-        # print(features[0].size(), features[1].size())
-
-        # As different feature backbones & patching provide differently
-        # sized features, these are brought into the correct form here.
-        features = self.forward_modules["preprocessing"](features)
-        # torch.Size([1568, 2, 1024])
-        # print(features.size())
-        features = self.forward_modules["preadapt_aggregator"](features)
-        # torch.Size([1568, 1024])
-        # print(features.size())
+            features = [
+                self.patch_maker.patchify(x, return_spatial_info=True) for x in features
+            ]  # [(,[28,28])(,[14,14])]
+            # print("features", features[0][0].size())
+            patch_shapes = [x[1] for x in features]  # [[28, 28], [14, 14]]
+            # print("patch_shapes", patch_shapes)
+            features = [x[0] for x in features]
+            # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
+            # print("features", features[0].size(), features[1].size())
+            ref_num_patches = patch_shapes[0]  # [28,28]
+            for i in range(1, len(features)):
+                _features = features[i]  # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
+                patch_dims = patch_shapes[i]  # [28,28] [14,14]
+                # TODO(pgehler): Add comments
+                _features = _features.reshape(
+                    _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:]
+                )  # torch.Size([2, 28 , 28, 512, 3, 3]) torch.Size([2, 14, 14, 1024, 3, 3])
+                _features = _features.permute(0, -3, -2, -1, 1, 2)
+                # torch.Size([2, 512 , 3, 3 , 28, 28])  torch.Size([2, 1024, 3, 3, 14, 14])
+                perm_base_shape = _features.shape
+                _features = _features.reshape(-1, *_features.shape[-2:])
+                # torch.Size([18432, 14, 14])
+                _features = F.interpolate(
+                    _features.unsqueeze(1),  # [18432 , 1 , 14, 14]
+                    size=(ref_num_patches[0], ref_num_patches[1]),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                # torch.Size([18432, 1, 28, 28])
+                _features = _features.squeeze(1)
+                # torch.Size([18432, 28, 28])
+                _features = _features.reshape(
+                    *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
+                )
+                # torch.Size([2, 1024, 3, 3, 28, 28])
+                _features = _features.permute(0, -2, -1, 1, 2, 3)
+                # torch.Size([2, 28, 28, 1024, 3, 3])
+                _features = _features.reshape(len(_features), -1, *_features.shape[-3:])
+                # torch.Size([2, 784, 1024, 3, 3])
+                features[i] = _features
+            features = [x.reshape(-1, *x.shape[-3:]) for x in features]
+            # torch.Size([1568, 512, 3, 3]) torch.Size([1568, 1024, 3, 3])
+            # print(features[0].size(), features[1].size())
+            # As different feature backbones & patching provide differently
+            # sized features, these are brought into the correct form here.
+            features = self.forward_modules["preprocessing"](features)
+            # torch.Size([1568, 2, 1024])
+            # print(features.size())
+            features = self.forward_modules["preadapt_aggregator"](features)
+            # torch.Size([1568, 1024])
+            # print(features.size())
+        elif self.mode == 'swin2':
+            # layer1 = 28
+            layer2 = 14
+            layer3 = 7
+            # features[0] = features[0].reshape(features[0].shape[0], layer1, layer1, features[0].shape[2])
+            # features[1] = features[1].reshape(features[1].shape[0], layer2, layer2, features[1].shape[2])
+            # features[2] = features[2].reshape(features[2].shape[0], layer3, layer3, features[2].shape[2])
+            # patch_shapes = [[layer1, layer1], [layer2, layer2], [layer3, layer3]]  # [[28, 28], [14, 14],[7,7]]
+            patch_shapes = [[layer2, layer2], [layer3, layer3]]  # [[28, 28], [14, 14],[7,7]]
+            ref_num_patches = patch_shapes[0]  # [28,28]
+            # torch.Size([2, 784,256]) torch.Size([2, 196,512]) torch.Size([2, 49,1024])
+            for i in range(1, len(features)):
+                _features = features[i]
+                patch_dims = patch_shapes[i]
+                # print("1", _features.size())
+                _features = _features.reshape(
+                    _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:]
+                )  # torch.Size([2, 14, 14, 512])
+                # print("t1", _features.size())
+                _features = _features.permute(0, -1, 1, 2)  # torch.Size([2, 512, 14, 14])
+                # print("t", _features.size())
+                perm_base_shape = _features.shape
+                _features = _features.reshape(-1, *_features.shape[-2:])  # torch.Size([1024, 14,14])
+                # print("2", _features.size())
+                _features = F.interpolate(
+                    _features.unsqueeze(1),  # [1024 , 1 , 14, 14]
+                    size=(ref_num_patches[0], ref_num_patches[1]),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                # print("3", _features.size())
+                _features = _features.squeeze(1)  # torch.Size([1024,28,28])
+                # print("4", _features.size())
+                _features = _features.reshape(
+                    *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
+                )  # [2 , 512 , 28, 28]
+                # print("5", _features.size())
+                _features = _features.permute(0, -2, -1, 1)  # [2 ,28, 28,512]
+                # print("6", _features.size())
+                _features = _features.reshape(len(_features), -1, *_features.shape[-1:])  # [2 ,784,512]
+                # print("7", _features.size())
+                features[i] = _features
+            features = [x.reshape(-1, *x.shape[-1:]) for x in features]
+            # print(features[0].size(), features[1].size(), features[2].size())
+            # print(features[0].size(), features[1].size())
+            # torch.Size([1568, 256]) torch.Size([1568, 512]) torch.Size([1568, 1024])
+            # features = torch.cat(features, dim=1)
+            # print("8", features.size())
+            features = self.forward_modules["preprocessing"](features)
+            # torch.Size([1568, 2, 1024])
+            # print(features.size())
+            features = self.forward_modules["preadapt_aggregator"](features)
+            # print(features.size())
+        elif self.mode == 'swin3':
+            # layer1 = 28
+            layer2 = 14
+            layer3 = 7
+            layer4 = 7
+            # features[0] = features[0].reshape(features[0].shape[0], layer1, layer1, features[0].shape[2])
+            # features[1] = features[1].reshape(features[1].shape[0], layer2, layer2, features[1].shape[2])
+            # features[2] = features[2].reshape(features[2].shape[0], layer3, layer3, features[2].shape[2])
+            # patch_shapes = [[layer1, layer1], [layer2, layer2], [layer3, layer3]]  # [[28, 28], [14, 14],[7,7]]
+            patch_shapes = [[layer2, layer2], [layer3, layer3], [layer4, layer4]]  # [[28, 28], [14, 14],[7,7]]
+            ref_num_patches = patch_shapes[0]  # [28,28]
+            # torch.Size([2, 784,256]) torch.Size([2, 196,512]) torch.Size([2, 49,1024])
+            for i in range(1, len(features)):
+                _features = features[i]
+                patch_dims = patch_shapes[i]
+                # print("1", _features.size())
+                _features = _features.reshape(
+                    _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:]
+                )  # torch.Size([2, 14, 14, 512])
+                # print("t1", _features.size())
+                _features = _features.permute(0, -1, 1, 2)  # torch.Size([2, 512, 14, 14])
+                # print("t", _features.size())
+                perm_base_shape = _features.shape
+                _features = _features.reshape(-1, *_features.shape[-2:])  # torch.Size([1024, 14,14])
+                # print("2", _features.size())
+                _features = F.interpolate(
+                    _features.unsqueeze(1),  # [1024 , 1 , 14, 14]
+                    size=(ref_num_patches[0], ref_num_patches[1]),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                # print("3", _features.size())
+                _features = _features.squeeze(1)  # torch.Size([1024,28,28])
+                # print("4", _features.size())
+                _features = _features.reshape(
+                    *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
+                )  # [2 , 512 , 28, 28]
+                # print("5", _features.size())
+                _features = _features.permute(0, -2, -1, 1)  # [2 ,28, 28,512]
+                # print("6", _features.size())
+                _features = _features.reshape(len(_features), -1, *_features.shape[-1:])  # [2 ,784,512]
+                # print("7", _features.size())
+                features[i] = _features
+            features = [x.reshape(-1, *x.shape[-1:]) for x in features]
+            # print(features[0].size(), features[1].size(), features[2].size())
+            # print(features[0].size(), features[1].size())
+            # torch.Size([1568, 256]) torch.Size([1568, 512]) torch.Size([1568, 1024])
+            # features = torch.cat(features, dim=1)
+            # print("8", features.size())
+            features = self.forward_modules["preprocessing"](features)
+            # torch.Size([1568, 2, 1024])
+            # print(features.size())
+            features = self.forward_modules["preadapt_aggregator"](features)
+            # print(features.size())
+        else:
+            features = [
+                self.patch_maker.patchify(x, return_spatial_info=True) for x in features
+            ]  # [(,[28,28])(,[14,14])]
+            # print("features", features[0][0].size())
+            patch_shapes = [x[1] for x in features]  # [[28, 28], [14, 14]]
+            # print("patch_shapes", patch_shapes)
+            features = [x[0] for x in features]
+            # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
+            # print("features", features[0].size(), features[1].size())
+            ref_num_patches = patch_shapes[0]  # [28,28]
+            for i in range(1, len(features)):
+                _features = features[i]  # torch.Size([2, 784, 512, 3, 3]) torch.Size([2, 196, 1024, 3, 3])
+                patch_dims = patch_shapes[i]  # [28,28] [14,14]
+                # TODO(pgehler): Add comments
+                _features = _features.reshape(
+                    _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:]
+                )  # torch.Size([2, 28 , 28, 512, 3, 3]) torch.Size([2, 14, 14, 1024, 3, 3])
+                _features = _features.permute(0, -3, -2, -1, 1, 2)
+                # torch.Size([2, 512 , 3, 3 , 28, 28])  torch.Size([2, 1024, 3, 3, 14, 14])
+                perm_base_shape = _features.shape
+                _features = _features.reshape(-1, *_features.shape[-2:])
+                # torch.Size([18432, 14, 14])
+                _features = F.interpolate(
+                    _features.unsqueeze(1),  # [18432 , 1 , 14, 14]
+                    size=(ref_num_patches[0], ref_num_patches[1]),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                # torch.Size([18432, 1, 28, 28])
+                _features = _features.squeeze(1)
+                # torch.Size([18432, 28, 28])
+                _features = _features.reshape(
+                    *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
+                )
+                # torch.Size([2, 1024, 3, 3, 28, 28])
+                _features = _features.permute(0, -2, -1, 1, 2, 3)
+                # torch.Size([2, 28, 28, 1024, 3, 3])
+                _features = _features.reshape(len(_features), -1, *_features.shape[-3:])
+                # torch.Size([2, 784, 1024, 3, 3])
+                features[i] = _features
+            features = [x.reshape(-1, *x.shape[-3:]) for x in features]
+            # torch.Size([1568, 512, 3, 3]) torch.Size([1568, 1024, 3, 3])
+            # print(features[0].size(), features[1].size())
+            # As different feature backbones & patching provide differently
+            # sized features, these are brought into the correct form here.
+            features = self.forward_modules["preprocessing"](features)
+            # torch.Size([1568, 2, 1024])
+            # print(features.size())
+            features = self.forward_modules["preadapt_aggregator"](features)
+            # torch.Size([1568, 1024])
+            # print(features.size())
         if provide_patch_shapes:
             return _detach(features), patch_shapes
         return _detach(features)

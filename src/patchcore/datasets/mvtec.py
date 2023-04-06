@@ -27,6 +27,8 @@ class MVTecDataset(Dataset):
         self.split = split  # 三种模式
         self.classnames_to_use = [classname]
         self.train_val_split = train_val_split  # 训练及测试集比例
+        self.transform_std = IMAGENET_STD
+        self.transform_mean = IMAGENET_MEAN
         '''
         imgpaths_per_class
         {'bottle':

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/TransPatch.iml" filepath="$PROJECT_DIR$/.idea/TransPatch.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/unsupervised-learning-defect-detection.iml" filepath="$PROJECT_DIR$/.idea/unsupervised-learning-defect-detection.iml" />
     </modules>
   </component>
 </project>

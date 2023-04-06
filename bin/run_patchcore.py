@@ -159,9 +159,13 @@ def dataset():
     return "get_dataloaders", get_dataloaders
 
 
-data = "mvtec"
-Mode = "resnet"  # swin1/resnet
-_LOG_GROUP = "resnet_layer2and3_test_if"  # swin1_layer2and3/resnet_layer2and3
+'''
+mvtec,optical,altex,sdd
+'''
+data = "sdd"
+Mode = "swin2"  # swin1/resnet
+_LOG_GROUP = "swin2_layer23_stack_identity"  # swin1_layer2and3/resnet_layer2and3
+_SAMPLER_TYPE = "identity"  # "approx_greedy_coreset"/"greedy_coreset"/"identity"
 '''
 False:mvtec,optical
 true:altex,sdd
@@ -212,11 +216,20 @@ elif data == "sdd":
     _CLASSNAMES = ["SDD"]
 
 Backbone = ('wideresnet50')  # vit_swin_base/wideresnet50
+Layers = ('layer2', 'layer3')
 if Mode == "resnet":
     Backbone = ('wideresnet50')  # vit_swin_base/wideresnet50
+    Layers = ('layer2', 'layer3')
 elif Mode == "swin1":
     Backbone = ('vit_swin_base')
-Layers = ('layer2', 'layer3')
+    Layers = ('layer2', 'layer3')
+elif Mode == "swin2":
+    Backbone = ('vit_swin_base')
+    Layers = ('layer2', 'layer3')
+elif Mode == 'swin3':
+    Backbone = ('vit_swin_base')
+    Layers = ('layer2', 'layer3', 'layer4')
+# Layers = ('layer2', 'layer3')
 
 _RISIZE = 256
 _TRAIN_VAL_SPLIT = 1.0
@@ -226,8 +239,7 @@ _AUGMENT = False
 _BATCH_SIZE = 2
 _NUM_WORKERS = 8
 _GPU = [8]
-# "approx_greedy_coreset"/"greedy_coreset"/"identity"
-_SAMPLER_TYPE = "approx_greedy_coreset"
+
 _SAMPLER_PERCENTAGE = 0.1
 _FAISS_ON_GPU = False
 _FAISS_NUM_WORKERS = 8
@@ -235,8 +247,8 @@ _PRETRAIN_EMBED_DIMENSION = 1024
 _TARGET_EMBED_DIMENSION = 1024
 _PATCHSIZE = 3
 _ANOMALY_SCORER_NUM_NN = 5
-_SAVE_SEGMENTATION_IMAGES = False
-_SAVE_PATCHCORE_MODEL = True
+_SAVE_SEGMENTATION_IMAGES = True
+_SAVE_PATCHCORE_MODEL = False
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

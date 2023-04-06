@@ -142,6 +142,25 @@ class ConcatMerger(_BaseMerger):
         return features.reshape(len(features), -1)
 
 
+class Myprocess(torch.nn.Module):
+    def __init__(self, input_dims):
+        super(Myprocess, self).__init__()
+        self.preprocessing_modules = torch.nn.ModuleList()
+        for i in range(0, len(input_dims) - 1):
+            module = MeanMapper(input_dims[i])
+            self.preprocessing_modules.append(module)
+        module = MeanMapper(input_dims[-1])
+        self.preprocessing_modules.append(module)
+
+    def forward(self, features):
+        _features = []
+        for module, feature in zip(self.preprocessing_modules, features):
+            _features.append(module(feature))
+        # print(_features[0].size())
+        # torch.Size([1568, 1024])
+        return torch.cat(_features, dim=1)
+
+
 class Preprocessing(torch.nn.Module):
     def __init__(self, input_dims, output_dim):
         super(Preprocessing, self).__init__()
@@ -273,6 +292,20 @@ class NetworkFeatureAggregator(torch.nn.Module):
                     backbone.layers.__dict__["_modules"]["1"].register_forward_hook(forward_hook)
                 elif extract_layer == 'layer3':
                     backbone.layers.__dict__["_modules"]["2"].register_forward_hook(forward_hook)
+            elif self.mode == 'swin2':
+                if extract_layer == 'layer2':
+                    backbone.layers.__dict__["_modules"]["1"].register_forward_hook(forward_hook)
+                elif extract_layer == 'layer3':
+                    backbone.layers.__dict__["_modules"]["2"].register_forward_hook(forward_hook)
+                elif extract_layer == 'layer1':
+                    backbone.layers.__dict__["_modules"]["0"].register_forward_hook(forward_hook)
+            elif self.mode == 'swin3':
+                if extract_layer == 'layer2':
+                    backbone.layers.__dict__["_modules"]["1"].register_forward_hook(forward_hook)
+                elif extract_layer == 'layer3':
+                    backbone.layers.__dict__["_modules"]["2"].register_forward_hook(forward_hook)
+                elif extract_layer == 'layer4':
+                    backbone.layers.__dict__["_modules"]["3"].register_forward_hook(forward_hook)
 
         self.to(self.device)
 
@@ -291,7 +324,10 @@ class NetworkFeatureAggregator(torch.nn.Module):
         """Computes the feature dimensions for all layers given input_shape."""
         _input = torch.ones([1] + list(input_shape)).to(self.device)
         _output = self(_input)
-        return [_output[layer].shape[1] for layer in self.layers_to_extract_from]
+        if self.mode == 'swin1' or self.mode == 'swin2' or self.mode == 'swin3':
+            return [_output[layer].shape[2] for layer in self.layers_to_extract_from]
+        else:
+            return [_output[layer].shape[1] for layer in self.layers_to_extract_from]
 
 
 class ForwardHook:
